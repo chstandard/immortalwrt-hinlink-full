@@ -43,17 +43,17 @@ jobs:
             python3-setuptools rsync unzip zlib1g-dev \
             file wget
 
-      - name: Select device config
-        run: |
-          cp configs/${{ github.event.inputs.device_config }} .config
-          make defconfig
-
       - name: Update feeds & resolve conflicts
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           # 必须卸载同名 feed 包，否则仓库自维护的 fancontrol / luci-app-oled 会被静默覆盖
           ./scripts/feeds uninstall fancontrol luci-app-fancontrol luci-app-oled || true
+
+      - name: Select device config
+        run: |
+          cp configs/${{ github.event.inputs.device_config }} .config
+          make defconfig
 
       - name: Download package sources
         run: make -j$(nproc) download
