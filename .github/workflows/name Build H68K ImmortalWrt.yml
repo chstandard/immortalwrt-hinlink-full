@@ -24,9 +24,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -34,6 +31,9 @@ jobs:
           temp-reserve-mb: 1024
           remove-dotnet: true
           remove-android: true
+
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         run: |
