@@ -51,6 +51,33 @@ jobs:
           ./scripts/feeds install -a
           # 必须卸载同名 feed 包，否则仓库自维护的 fancontrol / luci-app-oled 会被静默覆盖
           ./scripts/feeds uninstall fancontrol luci-app-fancontrol luci-app-oled || true
+          # small-package 与官方 feed 有大量同名包。包扫描(find 目录顺序)不确定谁胜出，
+          # 这里显式删除 small 侧同名包，保证官方 feed 版本胜出，构建结果确定可复现。
+          # small 只保留官方没有的包：luci-app-passwall2 / luci-app-ssr-plus / mihomo /
+          # lucky / luci-app-lucky / luci-app-amlogic / luci-app-mosdns / shadowsocksr-libev 等。
+          SMALL_DUP="\
+  adguardhome alac amule aria2 ariang autocore base-files brook btop cdnspeedtest chinadns-ng
+  coremark cpulimit cups dae daed ddns-go ddns-scripts ddns-scripts_dnspod dns2socks dns2tcp
+  dnsforwarder dnsmasq dnsproxy docker dockerd filebrowser firewall firewall4 frp fullconenat
+  fullconenat-nft geoview gmediarender gn gost haproxy hysteria ipt2socks jpcre2 libcron
+  libcryptopp libdouble-conversion libnftnl libtorrent-rasterbar lua-maxminddb lua-neturl
+  luci-app-3ginfo-lite luci-app-adguardhome luci-app-argon-config luci-app-arpbind
+  luci-app-autoreboot luci-app-cifs-mount luci-app-dae luci-app-daed luci-app-ddns-go
+  luci-app-diskman luci-app-dockerman luci-app-eqos luci-app-filebrowser luci-app-filebrowser-go
+  luci-app-frpc luci-app-frps luci-app-gost luci-app-homeproxy luci-app-msd_lite luci-app-natmap
+  luci-app-netdata luci-app-nfs luci-app-nps luci-app-oled luci-app-openclash luci-app-openlist
+  luci-app-openvpn-server luci-app-passwall luci-app-pppoe-relay luci-app-pppoe-server
+  luci-app-qbittorrent luci-app-ramfree luci-app-smartdns luci-app-snmpd luci-app-softethervpn
+  luci-app-syncdial luci-app-syncthing luci-app-sysuh3c luci-app-timewol luci-app-transmission
+  luci-app-unblockneteasemusic luci-app-usb-printer luci-app-v2raya luci-app-vlmcsd luci-app-vsftpd
+  luci-app-wechatpush luci-app-xlnetacc luci-app-zerotier luci-proto-minieap luci-theme-argon mhz
+  microsocks mosdns msd_lite msmtp mwan3 naiveproxy natmap netatalk netdata nftables nginx ngrokc
+  nps open-app-filter opkg oscam parted ppp qbittorrent qt6base qt6tools quickjspp rapidjson
+  redsocks2 rp-pppoe scutclient shadow-tls shadowsocks-rust simple-obfs sing-box smartdns src
+  sub-web subconverter sysuh3c tailscale tcping toml11 tools transmission
+  transmission-web-control trojan tuic-client udp2raw upx uwsgi v2ray-core v2ray-geodata
+  v2ray-plugin v2raya vlmcsd vsftpd watchcat wireless-regdb wxbase xray-core xray-plugin"
+          for p in $SMALL_DUP; do rm -f "package/feeds/small/$p"; done
 
       - name: Select device config
         run: |
