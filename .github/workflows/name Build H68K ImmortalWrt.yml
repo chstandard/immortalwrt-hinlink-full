@@ -57,6 +57,14 @@ jobs:
           cp configs/${{ github.event.inputs.device_config }} .config
           make defconfig
 
+      - name: Clean stale Python build state
+        run: |
+          # 防御性清理：清掉 Python 构建残留，避免损坏的中间态被复用。
+          # GitHub 托管 runner 每次都是全新环境，此步通常为空操作；
+          # 若迁移到自托管 runner 上重复构建，此步才有实际意义。
+          rm -rf build_dir/target-*/Python-3.14.7
+          rm -f staging_dir/target-*/stamp/.python3_installed
+
       - name: Download package sources
         run: |
           make -j$(nproc) download || make -j$(nproc) download
