@@ -13,12 +13,19 @@
 # python3 目标版编译失败（Modules/_ctypes/_ctypes.c: ffi.h: No such file）。
 # 本包恢复 libffi，使上述依赖链重新闭合。
 #
+# 注意：libffi 3.4.3 的 src/tramp.c 调用了 closures.c 中的
+# open_temp_exec_file()，但没有任何头文件声明该函数，启用静态 exec
+# trampoline（默认开启）时编译必然报
+# "implicit declaration of function 'open_temp_exec_file'"（GCC 14 视为错误）。
+# 静态 trampoline 仅是可选的闭包优化，python3-ctypes 等使用者不需要，
+# 故按历史 OpenWrt 官方包的做法加 --disable-exec-static-tramp 绕过。
+#
 
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=libffi
 PKG_VERSION:=3.4.3
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://sourceware.org/pub/libffi
@@ -48,7 +55,8 @@ TARGET_CFLAGS += $(FPIC)
 CONFIGURE_ARGS += \
 	--disable-builddir \
 	--disable-docs \
-	--disable-static
+	--disable-static \
+	--disable-exec-static-tramp
 
 define Build/InstallDev
 	$(INSTALL_DIR) $(1)/usr/include
