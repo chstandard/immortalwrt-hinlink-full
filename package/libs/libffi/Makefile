@@ -25,7 +25,15 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=libffi
 PKG_VERSION:=3.4.3
-PKG_RELEASE:=2
+PKG_RELEASE:=3
+
+# 必须声明 PKG_INSTALL，否则 include/package.mk 第 397 行
+#   Build/Install=$(if $(PKG_INSTALL),$(call Build/Install/Default,))
+# 会把 Build/Install 置空——make install DESTDIR=ipkg-install 根本不执行，
+# 导致 ipkg-install/usr/include 为空，Build/InstallDev 拷头文件时
+# 报 "cp: cannot stat .../ipkg-install/usr/include/*.h"。
+PKG_INSTALL:=1
+PKG_BUILD_PARALLEL:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://sourceware.org/pub/libffi
