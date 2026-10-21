@@ -60,6 +60,12 @@ jobs:
             case "$p" in ''|\#*) continue ;; esac
             rm -f "package/feeds/small/$p"
           done < configs/small-feed-dedup.txt
+          # 例外：mosdns 反过来删官方侧。官方 packages feed 的 mosdns(5.3.3) 会安装
+          # /etc/init.d/mosdns，与 small feed 的 luci-app-mosdns 自带的 init 脚本冲突
+          # （opkg 报 "trying to overwrite etc/init.d/mosdns owned by mosdns"）。
+          # small feed 的 mosdns(5.3.4) 只安装二进制，init 脚本与 UCI 配置由
+          # luci-app-mosdns 提供，两者配套，因此让 small 版本胜出。
+          rm -f package/feeds/packages/mosdns
 
       - name: Select device config
         run: |
