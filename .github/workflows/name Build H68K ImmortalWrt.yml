@@ -38,12 +38,35 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+          sudo apt-get install -y build-essential clang llvm flex bison g++ gawk \
             gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
             python3-setuptools python3-pyelftools libelf-dev \
             cmake xsltproc libxml2-utils pkg-config autoconf automake libtool \
             rsync unzip zlib1g-dev \
             file wget
+
+      - name: Prepare host LLVM for eBPF
+        run: |
+          # dae/daed 在编译期要用 clang 把 eBPF 程序编成 BPF 目标文件。
+          # include/bpf.mk 在 USE_LLVM_HOST 模式下拿 clang 所在目录去找
+          # llc / opt / llvm-dis / llvm-strip（按 clang 主版本号，通常是无后缀名），
+          # 而 Ubuntu 只提供带版本后缀的二进制，这里补上无后缀软链接。
+          LLVM_DIR="$(ls -d /usr/lib/llvm-* 2>/dev/null | sort -V | tail -1)"
+          echo "LLVM_DIR=$LLVM_DIR"
+          for t in llc opt llvm-dis llvm-strip; do
+            if [ -x "$LLVM_DIR/bin/$t" ]; then
+              sudo ln -sf "$LLVM_DIR/bin/$t" "/usr/local/bin/$t"
+            fi
+          done
+          command -v clang || { echo "::error::clang 缺失"; exit 1; }
+          clang --version | head -2
+          for t in llc opt llvm-dis llvm-strip; do
+            command -v "$t" || { echo "::error::$t 缺失（eBPF 编译需要）"; exit 1; }
+          done
+          # 冒烟测试：能否真的编出 bpfel 目标文件
+          printf 'int dummy(void){return 0;}\n' > /tmp/bpf_probe.c
+          clang -target bpfel -O2 -c /tmp/bpf_probe.c -o /tmp/bpf_probe.o
+          echo "host LLVM eBPF 工具链就绪"
 
       - name: Update feeds & resolve conflicts
         run: |
@@ -51,26 +74,35 @@ jobs:
           ./scripts/feeds install -a
           # 必须卸载同名 feed 包，否则仓库自维护的 fancontrol / luci-app-oled 会被静默覆盖
           ./scripts/feeds uninstall fancontrol luci-app-fancontrol luci-app-oled || true
-          # small-package 与官方 feed / 仓库核心树有大量同名包（清单见 configs/small-feed-dedup.txt）。
-          # 包扫描(find 目录顺序)不确定谁胜出，这里显式删除 small 侧同名包，
-          # 保证官方 feed 版本与仓库自维护版本胜出，构建结果确定可复现。
-          # small 只保留官方没有的包：luci-app-passwall2 / luci-app-ssr-plus / mihomo /
-          # lucky / luci-app-lucky / luci-app-amlogic / luci-app-mosdns / shadowsocksr-libev 等。
-          while read -r p; do
-            case "$p" in ''|\#*) continue ;; esac
-            rm -f "package/feeds/small/$p"
-          done < configs/small-feed-dedup.txt
-          # 例外：mosdns 反过来删官方侧。官方 packages feed 的 mosdns(5.3.3) 会安装
-          # /etc/init.d/mosdns，与 small feed 的 luci-app-mosdns 自带的 init 脚本冲突
-          # （opkg 报 "trying to overwrite etc/init.d/mosdns owned by mosdns"）。
-          # small feed 的 mosdns(5.3.4) 只安装二进制，init 脚本与 UCI 配置由
-          # luci-app-mosdns 提供，两者配套，因此让 small 版本胜出。
-          rm -f package/feeds/packages/mosdns
 
       - name: Select device config
         run: |
           cp configs/${{ github.event.inputs.device_config }} .config
           make defconfig
+
+      - name: Verify BTF/XDP and dae availability
+        run: |
+          # 内存内核选项必须真的编进 vmlinux，且 dae 的符号必须活着，
+          # 否则会白跑三四个小时，这里提前失败。
+          echo "--- 内核 BTF/XDP ---"
+          grep -E '^CONFIG_KERNEL_DEBUG_INFO_BTF=y$|^CONFIG_KERNEL_XDP_SOCKETS=y$|^# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set$' .config || true
+          for sym in CONFIG_KERNEL_DEBUG_INFO_BTF CONFIG_KERNEL_XDP_SOCKETS CONFIG_NEED_BPF_TOOLCHAIN; do
+            grep -q "^$sym=y$" .config || { echo "::error::$sym 未生效，dae 无法编译"; exit 1; }
+          done
+          grep -q '^# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set$' .config || { echo "::error::DEBUG_INFO_REDUCED 仍在开启，BTF 不可用"; exit 1; }
+          echo "--- dae / daed 包符号 ---"
+          for sym in CONFIG_PACKAGE_dae CONFIG_PACKAGE_daed CONFIG_PACKAGE_luci-app-dae CONFIG_PACKAGE_luci-app-daed CONFIG_PACKAGE_kmod-xdp-sockets-diag; do
+            grep -q "^$sym=y$" .config || { echo "::error::$sym 未出现在 .config，依赖链未满足"; exit 1; }
+          done
+          echo "--- 其余关键包 ---"
+          for sym in CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-openclash \
+                     CONFIG_PACKAGE_luci-app-openlist CONFIG_PACKAGE_luci-app-dockerman \
+                     CONFIG_PACKAGE_luci-app-filebrowser CONFIG_PACKAGE_luci-app-rclone \
+                     CONFIG_PACKAGE_luci-app-openvpn-server CONFIG_PACKAGE_luci-app-ddns \
+                     CONFIG_PACKAGE_luci-app-attendedsysupgrade CONFIG_PACKAGE_mosdns; do
+            if grep -q "^$sym=y$" .config; then echo "OK   $sym"; else echo "MISS $sym"; fi
+          done
+          echo "自检通过"
 
       - name: Clean stale Python build state
         run: |
