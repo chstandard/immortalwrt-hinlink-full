@@ -109,6 +109,22 @@ jobs:
           fi
           diff -u /tmp/Config.in.orig toolchain/Config.in || true
 
+      - name: Strip DWARF debug data from kernel modules
+        run: |
+          # 背景：CONFIG_KERNEL_DEBUG_INFO=y 给每个 .ko 编进完整 DWARF（.debug_* 段）。
+          # OpenWrt 的 rstrip.sh 对 .ko 会调 scripts/strip-kmod.sh，但它用的是
+          # objcopy --strip-unneeded —— 只删符号，不删 .debug_* 段！
+          # Run #12 因此 rootfs 未压缩体积达到 949MB（160MB 分区装不下）。
+          # 这里给 objcopy 追加 --strip-debug（等价 -g，只删 .debug_* 段，
+          # 保留 .BTF 段与模块加载所需符号；dae 读的 /sys/kernel/btf/vmlinux
+          # 来自内核镜像，不受影响）。
+          cp scripts/strip-kmod.sh /tmp/strip-kmod.sh.orig
+          sed -i 's/ARGS="-x -G __this_module --strip-unneeded"/ARGS="-x -G __this_module --strip-unneeded --strip-debug"/' scripts/strip-kmod.sh
+          if ! grep -q -- '--strip-unneeded --strip-debug' scripts/strip-kmod.sh; then
+            echo "::error::strip-kmod.sh 补丁未生效（上游可能改了写法）"; exit 1
+          fi
+          diff -u /tmp/strip-kmod.sh.orig scripts/strip-kmod.sh || true
+
       - name: Select device config
         run: |
           cp configs/${{ github.event.inputs.device_config }} .config
@@ -137,9 +153,15 @@ jobs:
           fi
           echo "--- 镜像分区 ---"
           grep -E '^CONFIG_TARGET_(KERNEL|ROOTFS)_PARTSIZE=' .config
-          # Run #12 的教训：开 BTF 后每个内核模块都带 .BTF 段，rootfs 未压缩体积
-          # 涨到 949MB，160MB 的 ext4 分区装不下。ROOTFS_PARTSIZE 必须足够大。
-          grep -q '^CONFIG_TARGET_ROOTFS_PARTSIZE=4096$' .config || { echo "::error::ROOTFS_PARTSIZE 不是 4096，BTF 模块会撑爆 rootfs"; exit 1; }
+          # Run #12 的教训：.ko 里的 DWARF（CONFIG_KERNEL_DEBUG_INFO=y）把 rootfs
+          # 撑到 949MB。Run #15 起 strip-kmod.sh 追加 --strip-debug 丢掉 .debug_*
+          # 段（.BTF 保留，dae 不受影响），rootfs 预期回落到 350MB 左右，
+          # 因此分区设为 512MB。
+          grep -q '^CONFIG_TARGET_ROOTFS_PARTSIZE=512$' .config || { echo "::error::ROOTFS_PARTSIZE 不是 512"; exit 1; }
+          echo "--- DWARF 剥离补丁 ---"
+          grep -q -- '--strip-unneeded --strip-debug' scripts/strip-kmod.sh || { echo "::error::strip-kmod.sh 未追加 --strip-debug，.ko 会带 DWARF 撑爆 rootfs"; exit 1; }
+          grep -E '^CONFIG_(USE_STRIP|USE_SSTRIP)' .config || true
+          echo "OK   strip 配置就绪"
           echo "--- 第三方 feed 应用 ---"
           for sym in CONFIG_PACKAGE_luci-app-passwall2 CONFIG_PACKAGE_luci-app-passwall2_Basic_Core_All \
                      CONFIG_PACKAGE_luci-app-ssr-plus CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Mihomo \
