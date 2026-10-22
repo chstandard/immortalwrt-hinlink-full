@@ -1,0 +1,29 @@
+# helloworld feed 与官方 immortalwrt packages/luci feed 重名的包。
+# workflow 在 ./scripts/feeds install -a 之后删除 helloworld 侧这些符号链接，
+# 让官方 feed 版本胜出（消除同名包扫描不确定性；依赖名相同，功能不受影响）。
+# helloworld 只保留官方没有的 6 个：
+#   luci-app-ssr-plus / shadowsocksr-libev / shadowsocks-libev /
+#   mihomo / dns2socks-rust / ipt2socks-rs
+chinadns-ng
+dns2socks
+dns2tcp
+dnsproxy
+gn
+hysteria
+ipt2socks
+lua-neturl
+microsocks
+mosdns
+naiveproxy
+redsocks2
+shadow-tls
+shadowsocks-rust
+simple-obfs
+tcping
+tuic-client
+upx
+v2ray-core
+v2ray-plugin
+v2raya
+xray-core
+xray-plugin
