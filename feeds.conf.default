@@ -6,3 +6,19 @@ src-git video https://github.com/openwrt/video.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
+
+# =====================================================================
+# 第三方 feed（官方 feed 中没有的应用，按需单独挂上游仓库，
+# 不使用 small-package 这类聚合仓以缩小冲突面）
+#   helloworld : luci-app-ssr-plus / shadowsocksr-libev(ssr-local/ssr-redir/
+#                ssr-server) / shadowsocks-libev / mihomo
+#   passwall2  : luci-app-passwall2
+#   lucky      : lucky + luci-app-lucky
+#   amlogic    : luci-app-amlogic（晶晨宝盒）
+# helloworld 与官方 feed 重名的 23 个包在 workflow 中删除 helloworld 侧，
+# 保证官方版本胜出（清单见 configs/thirdparty-dedup.txt）。
+# =====================================================================
+src-git helloworld https://github.com/fw876/helloworld.git;dev
+src-git passwall2 https://github.com/Openwrt-Passwall/openwrt-passwall2.git
+src-git lucky https://github.com/gdy666/luci-app-lucky.git
+src-git amlogic https://github.com/ophub/luci-app-amlogic.git
