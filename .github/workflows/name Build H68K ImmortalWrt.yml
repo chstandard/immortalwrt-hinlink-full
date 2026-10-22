@@ -75,6 +75,22 @@ jobs:
           # 必须卸载同名 feed 包，否则仓库自维护的 fancontrol / luci-app-oled 会被静默覆盖
           ./scripts/feeds uninstall fancontrol luci-app-fancontrol luci-app-oled || true
 
+      - name: Force host LLVM for eBPF
+        run: |
+          # dae/daed 需要 eBPF 编译能力。immortalwrt 的 choice BPF_TOOLCHAIN
+          # 带 "prompt ... if DEVEL"，DEVEL=n 时整个 choice 不可见，kconfig 会
+          # 直接取 default（Build LLVM toolchain），把 .config 里的
+          # BPF_TOOLCHAIN_HOST 忽略掉 —— 结果白编 1 小时 22 分 LLVM。
+          # .config 里已设 CONFIG_DEVEL=y，这里再做一道源码级保底（幂等）。
+          cp toolchain/Config.in /tmp/Config.in.orig
+          sed -i -E 's/^([[:space:]]*)default BPF_TOOLCHAIN_BUILD_LLVM[[:space:]]*$/\1default BPF_TOOLCHAIN_HOST/' toolchain/Config.in
+          # 关掉 USE_LLVM_BUILD 的自动默认（它不跟随 choice，会被独立置 y）
+          sed -i -E 's/^([[:space:]]*)default y if !DEVEL && NEED_BPF_TOOLCHAIN.*$/\1default n/' toolchain/Config.in
+          if ! grep -q 'default BPF_TOOLCHAIN_HOST' toolchain/Config.in; then
+            echo "::error::toolchain/Config.in 补丁未生效（上游可能改了写法）"; exit 1
+          fi
+          diff -u /tmp/Config.in.orig toolchain/Config.in || true
+
       - name: Select device config
         run: |
           cp configs/${{ github.event.inputs.device_config }} .config
@@ -94,6 +110,15 @@ jobs:
           for sym in CONFIG_PACKAGE_dae CONFIG_PACKAGE_daed CONFIG_PACKAGE_luci-app-dae CONFIG_PACKAGE_luci-app-daed CONFIG_PACKAGE_kmod-xdp-sockets-diag; do
             grep -q "^$sym=y$" .config || { echo "::error::$sym 未出现在 .config，依赖链未满足"; exit 1; }
           done
+          echo "--- eBPF 工具链（host LLVM 必须生效，否则会白编 ~80 分钟）---"
+          grep -E '^CONFIG_(DEVEL|BPF_TOOLCHAIN_|USE_LLVM_)' .config || true
+          if grep -q '^CONFIG_USE_LLVM_HOST=y$' .config && ! grep -q '^CONFIG_USE_LLVM_BUILD=y$' .config; then
+            echo "OK   host LLVM 生效，不会源码编译 LLVM"
+          else
+            echo "::warning::host LLVM 未完全生效，本次可能仍会源码编译 LLVM（约 +80 分钟）"
+          fi
+          echo "--- 镜像分区 ---"
+          grep -E '^CONFIG_TARGET_(KERNEL|ROOTFS)_PARTSIZE=' .config
           echo "--- 其余关键包 ---"
           for sym in CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-openclash \
                      CONFIG_PACKAGE_luci-app-openlist CONFIG_PACKAGE_luci-app-dockerman \
@@ -117,7 +142,9 @@ jobs:
           make -j$(nproc) download || make -j$(nproc) download
 
       - name: Compile firmware
-        run: make -j$(nproc) || make -j1 V=s
+        # 首次失败后并行重试（V=s 保留报错细节）。不再用 -j1 串行重试：
+        # 一旦在中途失败，串行重跑要几个小时，直接撞 360 分钟上限。
+        run: make -j$(nproc) || (echo "===== 并行构建失败，并行重试（V=s）====="; make -j$(nproc) V=s)
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v6
