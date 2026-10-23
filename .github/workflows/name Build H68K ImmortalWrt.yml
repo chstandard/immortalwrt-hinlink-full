@@ -94,21 +94,26 @@ jobs:
           fi
           # upx 例外（反向去重，让 helloworld 版胜出）：
           # 官方 immortalwrt 的 upx 只定义 Package/install（target 二进制），
-          # 没有 Host/Install —— host 构建跑完只写 stamp，不安装二进制。
+          # 没有 Host/Install —— Run #15 实测其 host 构建跑完只写 stamp，
+          # 二进制不会落到 $(STAGING_DIR_HOST)/bin/upx。
           # mihomo 声明 PKG_BUILD_DEPENDS:=golang/host upx/host，安装阶段强依赖
           # $(STAGING_DIR_HOST)/bin/upx 压缩二进制；官方版胜出时该文件不存在，
           # mihomo 必挂（Run #15 实测：Error 127,
           # staging_dir/host/bin/upx: No such file or directory）。
-          # helloworld 版 upx 自带 Host/Install（装到 $(STAGING_DIR_HOST)/bin/upx），
-          # 是 mihomo 的配套包，因此删掉官方侧符号链接，让 helloworld 版胜出。
-          # 注意：package/feeds/<feed>/ 下是按包名的符号链接（scripts/feeds 的
-          # do_install_src 生成），删符号链接不影响 feed 源码本身。
-          if [ -e package/feeds/helloworld/upx ]; then
-            rm -f package/feeds/packages/upx
-            echo "upx 反向去重完成：官方侧符号链接已删，helloworld 版胜出"
-          else
-            echo "::error::package/feeds/helloworld/upx 不存在，upx 反向去重失败"; exit 1
-          fi
+          # helloworld 版 upx 自带 Host/Install（硬编码装到
+          # $(STAGING_DIR_HOST)/bin/upx），是 mihomo 的配套包。
+          # 注意：./scripts/feeds install -a 按 feeds.conf 顺序处理，官方 packages
+          # feed 先占了 upx 这个名字，helloworld 同名包会被静默跳过
+          # （lookup_src 永远先找到官方侧，$installed{upx} 已置 1），
+          # 因此不能等 feeds install 创建链接，必须显式删除官方侧符号链接，
+          # 再手动补建 helloworld 侧符号链接（格式与 scripts/feeds 的
+          # do_install_src 一致：package/feeds/<feed>/ 下按包名的相对符号链接）。
+          rm -f package/feeds/packages/upx
+          ln -sfn ../../../feeds/helloworld/upx package/feeds/helloworld/upx
+          [ -e package/feeds/helloworld/upx/Makefile ] || { echo "::error::helloworld upx 符号链接未生效"; exit 1; }
+          grep -q 'STAGING_DIR_HOST)/bin/upx' feeds/helloworld/upx/Makefile || { echo "::error::helloworld upx 缺少 Host/Install（上游可能改了写法）"; exit 1; }
+          grep -q 'upx/host' feeds/helloworld/mihomo/Makefile || { echo "::error::mihomo 未声明 upx/host 依赖（上游可能改了写法）"; exit 1; }
+          echo "upx 反向去重完成：官方侧符号链接已删，helloworld 版胜出"
 
       - name: Force host LLVM for eBPF
         run: |
