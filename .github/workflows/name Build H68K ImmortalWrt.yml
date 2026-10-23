@@ -177,9 +177,11 @@ jobs:
           grep -E '^CONFIG_TARGET_(KERNEL|ROOTFS)_PARTSIZE=' .config
           # Run #12 的教训：.ko 里的 DWARF（CONFIG_KERNEL_DEBUG_INFO=y）把 rootfs
           # 撑到 949MB。Run #15 起 strip-kmod.sh 追加 --strip-debug 丢掉 .debug_*
-          # 段（.BTF 保留，dae 不受影响），rootfs 预期回落到 350MB 左右，
-          # 因此分区设为 512MB。
-          grep -q '^CONFIG_TARGET_ROOTFS_PARTSIZE=512$' .config || { echo "::error::ROOTFS_PARTSIZE 不是 512"; exit 1; }
+          # 段（.BTF 保留，dae 不受影响）。Run #17 实测剥离后 rootfs 内容仍约
+          # 600MB（docker 全家桶 + xray/mihomo 等 Go 二进制本身就是几十 MB 级，
+          # 20 项功能全开 512MB 装不下，差 21239 块 ≈ 87MB），分区改 1024MB
+          # （32GB eMMC 占比极小）。
+          grep -q '^CONFIG_TARGET_ROOTFS_PARTSIZE=1024$' .config || { echo "::error::ROOTFS_PARTSIZE 不是 1024"; exit 1; }
           echo "--- DWARF 剥离补丁 ---"
           grep -q -- '--strip-unneeded --strip-debug' scripts/strip-kmod.sh || { echo "::error::strip-kmod.sh 未追加 --strip-debug，.ko 会带 DWARF 撑爆 rootfs"; exit 1; }
           grep -E '^CONFIG_(USE_STRIP|USE_SSTRIP)' .config || true
