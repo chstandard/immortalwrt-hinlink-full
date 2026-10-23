@@ -1,9 +1,15 @@
 # helloworld feed 与官方 immortalwrt packages/luci feed 重名的包。
 # workflow 在 ./scripts/feeds install -a 之后删除 helloworld 侧这些符号链接，
 # 让官方 feed 版本胜出（消除同名包扫描不确定性；依赖名相同，功能不受影响）。
-# helloworld 只保留官方没有的 6 个：
+# helloworld 只保留官方没有的 7 个：
 #   luci-app-ssr-plus / shadowsocksr-libev / shadowsocks-libev /
-#   mihomo / dns2socks-rust / ipt2socks-rs
+#   mihomo / dns2socks-rust / ipt2socks-rs / upx
+#
+# upx 是例外（反向去重）：官方 immortalwrt 的 upx 只有 Package/install，
+# 没有 Host/Install —— host 构建只写 stamp 不安装二进制，而 mihomo 的
+# PKG_BUILD_DEPENDS:=golang/host upx/host 安装阶段强依赖
+# $(STAGING_DIR_HOST)/bin/upx（Run #15 实测 Error 127）。helloworld 版 upx
+# 自带 Host/Install，因此 workflow 改为删除官方侧符号链接，让 helloworld 胜出。
 chinadns-ng
 dns2socks
 dns2tcp
@@ -21,7 +27,6 @@ shadowsocks-rust
 simple-obfs
 tcping
 tuic-client
-upx
 v2ray-core
 v2ray-plugin
 v2raya
