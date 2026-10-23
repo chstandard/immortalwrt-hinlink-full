@@ -78,9 +78,9 @@ jobs:
           # （清单见 configs/thirdparty-dedup.txt）。同名包跨 feed 时谁胜出取决于
           # find 目录顺序，不确定；这里显式删除 helloworld 侧符号链接，
           # 让官方版本胜出，保证构建结果确定可复现。
-          # helloworld 只保留官方没有的 6 个：luci-app-ssr-plus /
+          # helloworld 只保留官方没有的 7 个：luci-app-ssr-plus /
           # shadowsocksr-libev / shadowsocks-libev / mihomo / dns2socks-rust /
-          # ipt2socks-rs。passwall2 / lucky / amlogic 三个 feed 与官方无重名。
+          # ipt2socks-rs / upx（upx 为反向去重例外，见下）。
           if [ -f configs/thirdparty-dedup.txt ]; then
             n=0
             while read -r p; do
@@ -91,6 +91,23 @@ jobs:
             echo "已删除 helloworld 侧重名包: $n 个"
           else
             echo "::warning::configs/thirdparty-dedup.txt 不存在，跳过 helloworld 去重"
+          fi
+          # upx 例外（反向去重，让 helloworld 版胜出）：
+          # 官方 immortalwrt 的 upx 只定义 Package/install（target 二进制），
+          # 没有 Host/Install —— host 构建跑完只写 stamp，不安装二进制。
+          # mihomo 声明 PKG_BUILD_DEPENDS:=golang/host upx/host，安装阶段强依赖
+          # $(STAGING_DIR_HOST)/bin/upx 压缩二进制；官方版胜出时该文件不存在，
+          # mihomo 必挂（Run #15 实测：Error 127,
+          # staging_dir/host/bin/upx: No such file or directory）。
+          # helloworld 版 upx 自带 Host/Install（装到 $(STAGING_DIR_HOST)/bin/upx），
+          # 是 mihomo 的配套包，因此删掉官方侧符号链接，让 helloworld 版胜出。
+          # 注意：package/feeds/<feed>/ 下是按包名的符号链接（scripts/feeds 的
+          # do_install_src 生成），删符号链接不影响 feed 源码本身。
+          if [ -e package/feeds/helloworld/upx ]; then
+            rm -f package/feeds/packages/upx
+            echo "upx 反向去重完成：官方侧符号链接已删，helloworld 版胜出"
+          else
+            echo "::error::package/feeds/helloworld/upx 不存在，upx 反向去重失败"; exit 1
           fi
 
       - name: Force host LLVM for eBPF
@@ -179,6 +196,17 @@ jobs:
             fi
           done
           echo "OK   helloworld 去重生效"
+          echo "--- upx provider（mihomo 的 host 构建依赖，Run #15 教训）---"
+          # 官方 upx 无 Host/Install，host 二进制不会安装；必须让 helloworld 版胜出
+          if [ -e package/feeds/packages/upx ]; then
+            echo "::error::package/feeds/packages/upx 仍存在，upx 反向去重未生效，mihomo 会因缺少 staging_dir/host/bin/upx 而失败"; exit 1
+          fi
+          if [ ! -e package/feeds/helloworld/upx ]; then
+            echo "::error::package/feeds/helloworld/upx 不存在，upx 反向去重失败"; exit 1
+          fi
+          grep -q 'STAGING_DIR_HOST)/bin/upx' feeds/helloworld/upx/Makefile || { echo "::error::helloworld upx 缺少 Host/Install（上游可能改了写法）"; exit 1; }
+          grep -q 'upx/host' feeds/helloworld/mihomo/Makefile || { echo "::error::mihomo 未声明 upx/host 依赖（上游可能改了写法）"; exit 1; }
+          echo "OK   upx -> helloworld（Host/Install 就绪）"
           echo "--- 其余关键包 ---"
           for sym in CONFIG_PACKAGE_luci-app-passwall CONFIG_PACKAGE_luci-app-openclash \
                      CONFIG_PACKAGE_luci-app-openlist CONFIG_PACKAGE_luci-app-dockerman \
