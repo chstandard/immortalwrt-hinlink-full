@@ -80,20 +80,22 @@
 	status = "okay";
 };
 
-	/* PHY MDIO 地址修正：厂商 dtb / flippy 固件反编译证实实机 PHY 地址为 0
-	 * （原 ethernet-phy@1 照抄主线蓝本，实机 MDIO 总线地址 1 无设备，
-	 *   导致 "MDIO device at address 1 is missing" / cannot attach to PHY）*/
+	/* ★ 2026-10-25 实机 MDIO 扫描（phytool）实证修复：
+	 * 两颗 YT8531 共用 gmac1 的 MDIO 总线，地址 0/1 各一颗；
+	 * rgmii_phy0 必须在 &mdio1 下 reg=<1>，gmac0 跨总线 phy-handle 引用。 */
 &mdio0 {
-	rgmii_phy0: ethernet-phy@0 {
-		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x0>;
-	};
+	/* gmac0 自有 MDIO 总线实机未接线，留空 */
 };
 
 &mdio1 {
 	rgmii_phy1: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
+	};
+
+	rgmii_phy0: ethernet-phy@1 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <0x1>;
 	};
 };
 
