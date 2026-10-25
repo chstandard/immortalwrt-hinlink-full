@@ -1,0 +1,20 @@
+#!/bin/sh
+# H68K (rk3568) 满带宽优化 —— 仅首次开机执行一次
+# （RPS 部分由 /etc/hotplug.d/net/99-h68k-rps-tune 在每次网卡注册时持久生效）
+
+# 1) 启用软件流量卸载（nftables flowtable）
+#    已建立连接的转发流量绕过 netfilter 主路径直接转发，
+#    NAT 吞吐可从约 1Gbps 提升到 2.5G 线速级。
+#    hw offload 关闭：rk3568 stmmac/RTL8125 无 nftables 硬件卸载支持。
+uci -q set firewall.@defaults[0].flow_offloading='1'
+uci -q set firewall.@defaults[0].flow_offloading_hw='0'
+uci -q commit firewall
+
+# 2) CPU 调频策略改为 performance
+#    默认 schedutil 有升频延迟，短时突发流量会先掉速再爬坡。
+#    设 global.set=1 可阻止 cpufreq 包的自检脚本覆盖本配置。
+uci -q set cpufreq.global.set='1'
+uci -q set cpufreq.cpufreq.governor0='performance'
+uci -q commit cpufreq
+
+exit 0

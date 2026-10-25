@@ -1,0 +1,23 @@
+#!/bin/sh
+# gmac（stmmac）网口是单收包队列、单 IRQ，默认所有软中断集中在
+# 一个 CPU 核上 —— 高流量时单核软中断打满，带宽上不去。
+# 这里把收包处理（RPS）分散到全部 4 个 A55 核心，网卡每次注册
+# （含开机与 hotplug）都会执行，重启后依然生效。
+# RTL8125（2.5G 口）本身支持多队列 + MSI-X，由 irqbalance 均衡，
+# 不受本脚本影响。
+
+[ "$ACTION" = add ] || exit 0
+case "$INTERFACE" in
+	eth*) ;;
+	*) exit 0 ;;
+esac
+
+for q in /sys/class/net/"$INTERFACE"/queues/rx-*/rps_cpus; do
+	[ -f "$q" ] && echo f > "$q" 2>/dev/null
+done
+# 每队列 RPS 流表项（总和应 <= net.core.rps_sock_flow_entries=32768）
+for q in /sys/class/net/"$INTERFACE"/queues/rx-*/rps_flow_cnt; do
+	[ -f "$q" ] && echo 4096 > "$q" 2>/dev/null
+done
+
+exit 0
