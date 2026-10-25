@@ -39,7 +39,7 @@
 	assigned-clock-parents = <&cru SCLK_GMAC0_RGMII_SPEED>;
 	assigned-clock-rates = <0>, <125000000>;
 	clock_in_out = "output";
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii";
 	phy-supply = <&vcc3v3_sys>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&gmac0_miim
@@ -62,7 +62,7 @@
 	assigned-clock-parents = <&cru SCLK_GMAC1_RGMII_SPEED>;
 	assigned-clock-rates = <0>, <125000000>;
 	clock_in_out = "output";
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii";
 	phy-supply = <&vcc3v3_sys>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&gmac1m1_miim
@@ -80,17 +80,20 @@
 	status = "okay";
 };
 
+	/* PHY MDIO 地址修正：厂商 dtb / flippy 固件反编译证实实机 PHY 地址为 0
+	 * （原 ethernet-phy@1 照抄主线蓝本，实机 MDIO 总线地址 1 无设备，
+	 *   导致 "MDIO device at address 1 is missing" / cannot attach to PHY）*/
 &mdio0 {
-	rgmii_phy0: ethernet-phy@1 {
+	rgmii_phy0: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x1>;
+		reg = <0x0>;
 	};
 };
 
 &mdio1 {
-	rgmii_phy1: ethernet-phy@1 {
+	rgmii_phy1: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x1>;
+		reg = <0x0>;
 	};
 };
 
