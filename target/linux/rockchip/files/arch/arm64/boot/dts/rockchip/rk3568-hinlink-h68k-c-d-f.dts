@@ -72,35 +72,38 @@
 		     &gmac1m1_rgmii_clk
 		     &gmac1m1_rgmii_bus
 		     &gmac1_rstn>;
-	snps,reset-gpios = <&gpio1 RK_PB0 GPIO_ACTIVE_LOW>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 20000 100000>;
 	tx_delay = <0x4f>;
 	rx_delay = <0x26>;
-	phy-handle = <&rgmii_phy1>;
+	/* ★ 2026-10-26 实机验证：eth0 的 PHY 在其所属 MDIO 总线上完全不可达
+	 *   （地址 0/1 均无应答；对 addr1 断电时 addr0 链路同步消失 → 同一颗芯片，
+	 *    gmac0 总线上只有一颗 PHY；gmac1 总线上 0/1 全空）。
+	 *   MDIO 管理通道不通，但 PHY 自身工作正常（插线后黄灯闪烁＝硬件自协商成功）。
+	 *   因此改用 fixed-link：MAC 固定 1000/full，链路由 PHY 硬件自协商，
+	 *   完全不经过 MDIO。PHY 的 reset 线（gpio1 PB0 → gpio40）交由
+	 *   /etc/uci-defaults/99-h68k-phy-reset 显式拉高释放。 */
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+		pause;
+	};
 	status = "okay";
 };
 
-	/* ★ 2026-10-26 实机 DTB + phytool 双重实证（h68k-23 回归后修正）：
-	 *   &mdio0 = gmac1 (fe2a0000 / eth1) 的 MDIO 总线 —— 两颗 YT8531 都挂在这里
-	 *            （地址 0 = eth1 用、地址 1 = eth0 用，reg6 不同可证是两颗芯片）
-	 *   &mdio1 = gmac0 (fe010000 / eth0) 的 MDIO 总线 —— 板上未接线，全地址无设备
-	 * 所以两颗 PHY 都必须定义在 &mdio0 下；eth0 用 phy-handle 跨总线引用 addr1。
-	 * 踩过的坑：把节点写进 &mdio1 会让 eth0/eth1 都报 "MDIO device ... is missing"，
-	 *           两口同时失效（h68k-23 的回归）。 */
+	/* ★ MDIO 归属（查 rk3568.dtsi 确认 + 实机验证）：
+	 *   &mdio0 ⊂ gmac0 = ethernet@fe2a0000（内核枚举为 eth1）
+	 *   &mdio1 ⊂ gmac1 = ethernet@fe010000（内核枚举为 eth0）
+	 *   gmac0 的 YT8531 在地址 0（主线写的 1 是错的，改成 0 后该口立即恢复）。
+	 *   gmac1 的 PHY 在其总线上任何地址都不应答 → 该口改用 fixed-link，
+	 *   不再为它声明 PHY 节点（声明了只会报 "MDIO device ... is missing"）。
+	 * 踩过的坑：把两颗 PHY 都塞进同一个 mdio 节点 → eth0/eth1 同时失效。 */
 &mdio1 {
-	/* gmac0 自有 MDIO 总线板上未接线，留空 */
+	/* gmac1 的 PHY 无法通过 MDIO 访问，改走 fixed-link */
 };
 
 &mdio0 {
-	rgmii_phy1: ethernet-phy@0 {
+	rgmii_phy0: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
-	};
-
-	rgmii_phy0: ethernet-phy@1 {
-		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x1>;
 	};
 };
 

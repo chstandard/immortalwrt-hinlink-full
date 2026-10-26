@@ -71,31 +71,29 @@
 		     &gmac1m1_rgmii_clk
 		     &gmac1m1_rgmii_bus
 		     &gmac1_rstn>;
-	snps,reset-gpios = <&gpio1 RK_PB0 GPIO_ACTIVE_LOW>;
-	snps,reset-active-low;
-	snps,reset-delays-us = <0 20000 100000>;
 	tx_delay = <0x4f>;
 	rx_delay = <0x26>;
-	phy-handle = <&rgmii_phy1>;
+	/* eth0 的 PHY 在 MDIO 上不可达（实机扫描无应答），改 fixed-link：
+	 * MAC 固定 1000/full，链路由 PHY 硬件自协商，不经过 MDIO。
+	 * PHY reset 线（gpio1 PB0 → gpio40）由 uci-defaults 显式拉高释放。 */
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+		pause;
+	};
 	status = "okay";
 };
 
-	/* ★ 2026-10-26 实机实证修正：&mdio0 = gmac1(eth1) 总线，两颗 YT8531 都在此，
-	 * addr0 归 eth1、addr1 归 eth0；&mdio1 = gmac0(eth0) 总线，板上未接线。
-	 * 两颗 PHY 节点必须定义在 &mdio0 下，eth0 跨总线 phy-handle 引用 addr1。 */
+	/* ★ MDIO 归属：&mdio0 ⊂ gmac0(fe2a0000/eth1)，&mdio1 ⊂ gmac1(fe010000/eth0)。
+	 * gmac0 的 YT8531 在地址 0；gmac1 的 PHY 无法通过 MDIO 访问，走 fixed-link。 */
 &mdio1 {
-	/* gmac0 自有 MDIO 总线板上未接线，留空 */
+	/* gmac1 的 PHY 无法通过 MDIO 访问，改走 fixed-link */
 };
 
 &mdio0 {
-	rgmii_phy1: ethernet-phy@0 {
+	rgmii_phy0: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
-	};
-
-	rgmii_phy0: ethernet-phy@1 {
-		compatible = "ethernet-phy-ieee802.3-c22";
-		reg = <0x1>;
 	};
 };
 

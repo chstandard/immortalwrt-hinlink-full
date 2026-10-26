@@ -1,0 +1,17 @@
+#!/bin/sh
+# H68K c-d-f: gmac1 (eth0) 使用 fixed-link，驱动不再注册 MDIO 总线，
+# 也就没有人再去驱动这颗 PHY 的 reset 线。这里显式把它拉高（释放复位），
+# 保证 PHY 一直处于工作状态，让它的硬件自协商能正常建立链路。
+#
+# gpio1 RK_PB0 -> gpiochip1 line 8 -> 全局编号 40
+# reset 为 ACTIVE_LOW：写 1 = 释放（不复位）
+G=40
+
+if [ -d /sys/class/gpio ]; then
+	[ -e /sys/class/gpio/gpio$G ] || echo "$G" > /sys/class/gpio/export 2>/dev/null
+	echo out > /sys/class/gpio/gpio$G/direction 2>/dev/null
+	echo 1  > /sys/class/gpio/gpio$G/value 2>/dev/null
+	logger -t h68k-phy "eth0 PHY reset gpio$G released"
+fi
+
+exit 0
