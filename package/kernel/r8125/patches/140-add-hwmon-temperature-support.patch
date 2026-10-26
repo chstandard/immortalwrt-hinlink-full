@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: chstandard <chstandard@users.noreply.github.com>
+Date: Mon, 26 Oct 2026 22:00:00 +0800
+Subject: [PATCH] r8125: expose the on-die temperature sensor via hwmon
+
+The vendor driver can read the integrated PHY temperature sensor
+(OCP register 0xBD84) but only exposes it through a procfs debug
+node that requires testmode. LuCI and other userspace tooling look
+for the standard hwmon interface instead (temp1_input), which is
+also what the in-kernel r8169 driver provides for RTL8125B+.
+
+Register a devm hwmon chip next to the netdevice and report the
+sensor as temp1_input in millidegrees Celsius. Errors are ignored
+so a missing node never fails probe; reads while the interface is
+down return -ENODATA.
+
+Signed-off-by: chstandard <chstandard@users.noreply.github.com>
+---
+ src/r8125_n.c | 66 ++++
+ 1 file changed, 66 insertions(+)
+
+--- a/src/r8125_n.c
++++ b/src/r8125_n.c
+@@ -749,6 +749,66 @@
+                 return (tmp / 2);
+ }
+ 
++#if IS_ENABLED(CONFIG_HWMON)
++#include <linux/hwmon.h>
++
++/* Expose the on-die temperature sensor as temp1_input so that userspace
++ * (LuCI port status, lm-sensors, ...) can read it. Only RTL8125B/D and
++ * newer implement the sensor; the range check below filters out the
++ * bogus value returned by older chips.
++ */
++static umode_t r8125_hwmon_is_visible(const void *drvdata,
++                                      enum hwmon_sensor_types type,
++                                      u32 attr, int channel)
++{
++        return 0444;
++}
++
++static int r8125_hwmon_read(struct device *hwdev, enum hwmon_sensor_types type,
++                            u32 attr, int channel, long *val)
++{
++        struct net_device *ndev = dev_get_drvdata(hwdev);
++        struct rtl8125_private *tp;
++        unsigned long flags;
++        int cel;
++
++        if (!ndev)
++                return -ENODEV;
++
++        if (type != hwmon_temp || attr != hwmon_temp_input)
++                return -EOPNOTSUPP;
++
++        tp = netdev_priv(ndev);
++        if (!netif_running(ndev))
++                return -ENODATA;
++
++        r8125_spin_lock(&tp->phy_lock, flags);
++        cel = rtl8125_read_thermal_sensor(tp);
++        r8125_spin_unlock(&tp->phy_lock, flags);
++
++        if (cel < -40 || cel > 150)
++                return -ENODATA;
++
++        *val = (long)cel * 1000;
++        return 0;
++}
++
++static const struct hwmon_ops r8125_hwmon_ops = {
++        .is_visible = r8125_hwmon_is_visible,
++        .read = r8125_hwmon_read,
++};
++
++static const struct hwmon_channel_info * const r8125_hwmon_info[] = {
++        HWMON_CHANNEL_INFO(temp, HWMON_T_INPUT),
++        NULL
++};
++
++static const struct hwmon_chip_info r8125_hwmon_chip_info = {
++        .ops = &r8125_hwmon_ops,
++        .info = r8125_hwmon_info,
++};
++#endif /* CONFIG_HWMON */
++
+ int rtl8125_dump_tally_counter(struct rtl8125_private *tp, dma_addr_t paddr)
+ {
+         u32 cmd;
+@@ -17568,6 +17628,12 @@
+ 
+         device_set_wakeup_enable(&pdev->dev, tp->wol_enabled);
+ 
++#if IS_ENABLED(CONFIG_HWMON)
++        /* Ignore errors: a missing hwmon node must never fail probe. */
++        devm_hwmon_device_register_with_info(&pdev->dev, "r8125", dev,
++                                             &r8125_hwmon_chip_info, NULL);
++#endif /* CONFIG_HWMON */
++
+         netif_carrier_off(dev);
+ 
+ #ifdef ENABLE_R8125_SYSFS
