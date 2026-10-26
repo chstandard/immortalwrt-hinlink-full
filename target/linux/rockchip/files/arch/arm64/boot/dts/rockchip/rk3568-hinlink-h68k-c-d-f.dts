@@ -81,17 +81,18 @@
 	status = "okay";
 };
 
-	/* ★ 2026-10-25 实机 MDIO 扫描（phytool）实证修复：
-	 * H68K c-d-f 两颗 YT8531 千兆 PHY **共用 gmac1 的 MDIO 总线**（stmmac-0），
-	 * 地址 0 和 1 各一颗；gmac0 自己的 MDIO 总线（stmmac-1）上无任何设备。
-	 * 因此 rgmii_phy0 必须定义在 &mdio1 下、reg=<1>，gmac0 跨总线 phy-handle 引用。
-	 * （原写法放在 &mdio0，无论地址 0/1 都报 "MDIO device ... is missing"）
-	 * 实测依据：phytool read eth1/1/2-3 = 0x4f51/0xe91b（YT8531），reg6 与 addr0 有差异 */
-&mdio0 {
-	/* gmac0 自有 MDIO 总线实机未接线，留空 */
+	/* ★ 2026-10-26 实机 DTB + phytool 双重实证（h68k-23 回归后修正）：
+	 *   &mdio0 = gmac1 (fe2a0000 / eth1) 的 MDIO 总线 —— 两颗 YT8531 都挂在这里
+	 *            （地址 0 = eth1 用、地址 1 = eth0 用，reg6 不同可证是两颗芯片）
+	 *   &mdio1 = gmac0 (fe010000 / eth0) 的 MDIO 总线 —— 板上未接线，全地址无设备
+	 * 所以两颗 PHY 都必须定义在 &mdio0 下；eth0 用 phy-handle 跨总线引用 addr1。
+	 * 踩过的坑：把节点写进 &mdio1 会让 eth0/eth1 都报 "MDIO device ... is missing"，
+	 *           两口同时失效（h68k-23 的回归）。 */
+&mdio1 {
+	/* gmac0 自有 MDIO 总线板上未接线，留空 */
 };
 
-&mdio1 {
+&mdio0 {
 	rgmii_phy1: ethernet-phy@0 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
